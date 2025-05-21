@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useFranchise } from '../context/FranchiseContext';
 import { FranchiseLocation, SourcedLocation } from '../types';
-import { Clipboard, CheckCircle, Download, X, ChevronDown, ChevronUp, AlertCircle } from 'lucide-react';
+import { Clipboard, CheckCircle, Download, X, ChevronDown, ChevronUp, AlertCircle, CheckSquare } from 'lucide-react';
 
 export const ResultsPanel: React.FC = () => {
   const { results, sourceProgress, loading, streaming, error, query, clearResults, getSourceResults } = useFranchise();
@@ -265,6 +265,75 @@ export const ResultsPanel: React.FC = () => {
               </div>
             );
           })}
+          
+          {/* Summary Table - Show after streaming is complete */}
+          {!streaming && results.length > 0 && (
+            <div className="mt-8 border-t pt-6">
+              <div className="flex items-center mb-4">
+                <h3 className="text-lg font-semibold text-gray-800">Verified Locations Summary</h3>
+                <span className="ml-2 px-2 py-1 bg-green-100 text-green-800 text-xs font-medium rounded">
+                  Search Complete
+                </span>
+              </div>
+              
+              <div className="overflow-x-auto shadow rounded-lg">
+                <table className="min-w-full divide-y divide-gray-200">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Address
+                      </th>
+                      <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Phone Number
+                      </th>
+                      <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Verified By
+                      </th>
+                      <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Actions
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-gray-200">
+                    {results.map((location, index) => (
+                      <tr key={`summary-${index}`} className="hover:bg-gray-50 transition-colors">
+                        <td className="px-6 py-4 text-sm text-gray-900">
+                          {location.address}
+                        </td>
+                        <td className="px-6 py-4 text-sm text-gray-900">
+                          {location.phoneNumber}
+                        </td>
+                        <td className="px-6 py-4 text-sm text-gray-900">
+                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                            <CheckSquare className="h-3 w-3 mr-1" />
+                            {location.source}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                          <button
+                            onClick={() => copyToClipboard(`${location.address} - ${location.phoneNumber}`, index)}
+                            className="text-blue-600 hover:text-blue-900 flex items-center transition-colors"
+                          >
+                            {copiedIndex === index ? (
+                              <>
+                                <CheckCircle className="h-4 w-4 mr-1 text-green-500" />
+                                <span className="text-green-500">Copied</span>
+                              </>
+                            ) : (
+                              <>
+                                <Clipboard className="h-4 w-4 mr-1" />
+                                Copy
+                              </>
+                            )}
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>

@@ -4,7 +4,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from typing import List, Optional
 from langchain_openai import ChatOpenAI
-from browser_use import Agent, Controller
+from browser_use import Agent, Controller, BrowserConfig, Browser
 from dotenv import load_dotenv
 import os
 import json
@@ -38,6 +38,13 @@ class Location(BaseModel):
 class Locations(BaseModel):
     locations: List[Location]
 
+planner_llm = ChatOpenAI(model='o4-mini')
+
+browser_config = BrowserConfig(
+    headless=True, 
+    disable_security=True
+)
+
 async def stream_franchise_details(franchise_name: str, country: str, state: str, city: str):
     shared_locations = set()
     active_agents = 0
@@ -53,7 +60,7 @@ async def stream_franchise_details(franchise_name: str, country: str, state: str
             await queue.put(f"data: {json.dumps({'status': 'progress', 'source': source_name, 'message': f'Searching {source_name}...'})}\n\n")
             
             try:
-                active_agents += 1
+                # NOTE: Removed active_agents increment here because we set it based on task count
                 print(f"Starting search with {source_name} agent")
                 
                 controller = Controller(output_model=Locations)
@@ -112,37 +119,61 @@ async def stream_franchise_details(franchise_name: str, country: str, state: str
                 await queue.put(f"data: {json.dumps({'status': 'error', 'source': source_name, 'message': error_msg})}\n\n")
                 await queue.put(f"data: {json.dumps({'status': 'complete', 'source': source_name})}\n\n")
                 active_agents -= 1
+                print(f"{source_name} agent failed, remaining agents: {active_agents}")
         
-        google_maps_agent = Agent(
+        # Create agents with separate browsers and improved retry logic
+        def create_agent(task, url, source_name, browser):
+            try:
+                return Agent(
+                    task=task,
+                    llm=ChatOpenAI(model="gpt-4o"),
+                    initial_actions=[{'open_tab': {'url': url}}],
+                    use_vision=True,
+                    enable_memory=False,
+                    # planner_llm=planner_llm,
+                    # planner_interval=4,
+                    # controller_kwargs={"browser_id": f"{source_name}_{franchise_name}_{city}"},
+                    browser=browser,
+                )
+            except Exception as e:
+                print(f"Error creating {source_name} agent: {str(e)}")
+                return None
+
+        google_maps_agent = create_agent(
             task=(
-                f"Find {franchise_name} locations in {city}, {state}, {country} using Google Maps. "
-                f"For each location, extract the exact address and phone number. "
+                f"Find {franchise_name} locations in {city}, {state}, {country} using Google Maps only. The google maps tab is already opened for you you just need to search."
+                f"For each location, extract the exact address and phone number. Return all the different locations from the results in side pane. Do not deep dive any further."
                 f"Return each location in JSON format: {{\"address\": \"<address>\", \"phone\": \"<phone>\", \"source\": \"Google Maps\"}}"
             ),
-            llm=ChatOpenAI(model="gpt-4o"),
-            initial_actions=[{'open_tab': {'url': f'https://www.google.com/maps/search/{franchise_name}+{city}+{state}+{country}'}}],
-            use_vision=True,
-            enable_memory=False,
+            url=f'https://www.google.com/maps/search/{franchise_name}+{city}+{state}+{country}',
+            source_name="Google Maps",
+            browser=Browser(config=browser_config)
         )
         
-        official_website_agent = Agent(
+        official_website_agent = create_agent(
             task=(
-                f"Find {franchise_name} locations in {city}, {state}, {country} by visiting the official website. "
-                f"For each location, extract the exact address and phone number. "
+                f"Find {franchise_name} locations in {state}, {country} by visiting the official website only. "
+                f"For each location, extract the exact address and phone number."
                 f"Return each location in JSON format: {{\"address\": \"<address>\", \"phone\": \"<phone>\", \"source\": \"Official Website\"}}"
             ),
-            llm=ChatOpenAI(model="gpt-4o"),
-            initial_actions=[{'open_tab': {'url': f"https://www.bing.com/search?q={franchise_name}+official+website"}}],
-            use_vision=True,
-            enable_memory=False,
+            url=f"https://www.bing.com/search?q={franchise_name}+official+website+{city}+{state}+{country}",
+            source_name="Official Website",
+            browser=Browser(config=browser_config)
         )
         
         tasks = [
-            asyncio.create_task(process_agent_results(google_maps_agent, "Google Maps", result_queue)),
-            asyncio.create_task(process_agent_results(official_website_agent, "Official Website", result_queue))
+            *([asyncio.create_task(process_agent_results(google_maps_agent, "Google Maps", result_queue))] if google_maps_agent else []),
+            *([asyncio.create_task(process_agent_results(official_website_agent, "Official Website", result_queue))] if official_website_agent else [])
         ]
-        active_agents = 2
         
+        # Set the initial count of active agents
+        active_agents = len(tasks)
+        print(f"Starting with {active_agents} active agents")
+        
+        if active_agents == 0:
+            yield f"data: {json.dumps({'error': 'Failed to create any search agents'})}\n\n"
+            return
+
         results_sent = False
         while active_agents > 0 or not result_queue.empty():
             try:
@@ -151,6 +182,8 @@ async def stream_franchise_details(franchise_name: str, country: str, state: str
                     results_sent = True
                 yield message
             except asyncio.TimeoutError:
+                # Add a status check every few timeouts
+                # print(f"Waiting for results... Active agents: {active_agents}, Queue empty: {result_queue.empty()}")
                 continue
         
         if len(shared_locations) == 0 and not results_sent:
@@ -161,8 +194,8 @@ async def stream_franchise_details(franchise_name: str, country: str, state: str
             }
             yield f"data: {json.dumps({'location': fallback_loc, 'source': 'System'})}\n\n"
         
+        print("Stream complete, all agents finished, sending all_complete signal")
         yield f"data: {json.dumps({'status': 'all_complete'})}\n\n"
-        print("All agents completed, sending all_complete signal")
         
     except Exception as e:
         error_msg = str(e)
