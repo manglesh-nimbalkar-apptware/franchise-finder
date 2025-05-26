@@ -1,16 +1,11 @@
 import React, { useState } from 'react';
 import { useFranchise } from '../context/FranchiseContext';
-import { FranchiseLocation, SourcedLocation } from '../types';
-import { Clipboard, CheckCircle, Download, X, ChevronDown, ChevronUp, AlertCircle, CheckSquare } from 'lucide-react';
+import { Clipboard, CheckCircle, Download, X, Search, CheckSquare } from 'lucide-react';
 
 export const ResultsPanel: React.FC = () => {
-  const { results, sourceProgress, loading, streaming, error, query, clearResults, getSourceResults } = useFranchise();
+  const { results, sourceProgress, loading, streaming, error, query, clearResults } = useFranchise();
   const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
-  const [expandedSources, setExpandedSources] = useState<Record<string, boolean>>({
-    'Google Maps': true,
-    'Official Website': true,
-  });
-
+  
   const copyToClipboard = (text: string, index: number) => {
     navigator.clipboard.writeText(text).then(() => {
       setCopiedIndex(index);
@@ -37,21 +32,23 @@ export const ResultsPanel: React.FC = () => {
     document.body.removeChild(link);
   };
 
-  const toggleSource = (source: string) => {
-    setExpandedSources(prev => ({
-      ...prev,
-      [source]: !prev[source]
-    }));
-  };
-
-  const getSourceStatus = (source: string) => {
-    const progress = sourceProgress.find(p => p.source === source);
-    return progress || { 
-      source, 
-      status: 'initializing', 
-      message: 'Waiting to start...', 
-      count: 0 
-    };
+  const getSearchStatusMessage = () => {
+    if (!streaming) return null;
+    
+    const completedSources = sourceProgress.filter(s => s.status === 'complete').length;
+    const totalSources = sourceProgress.length;
+    
+    if (completedSources === totalSources) {
+      return "Search complete";
+    }
+    
+    const activeSources = sourceProgress
+      .filter(s => s.status !== 'complete' && s.status !== 'error')
+      .map(s => s.source);
+      
+    if (activeSources.length === 0) return "Processing results...";
+    
+    return `Searching ${activeSources.join(', ')}...`;
   };
 
   if (loading && !streaming) {
@@ -93,19 +90,7 @@ export const ResultsPanel: React.FC = () => {
     return null;
   }
 
-  const sourcesMap = new Map<string, SourcedLocation[]>();
-  results.forEach(location => {
-    if (!sourcesMap.has(location.source)) {
-      sourcesMap.set(location.source, []);
-    }
-    sourcesMap.get(location.source)!.push(location);
-  });
-
-  const standardSources = ['Google Maps', 'Official Website'];
-  const availableSources = Array.from(new Set([
-    ...standardSources,
-    ...Array.from(sourcesMap.keys())
-  ]));
+  const statusMessage = getSearchStatusMessage();
 
   return (
     <div className="bg-white rounded-xl shadow-md overflow-hidden transition-all duration-300 hover:shadow-lg">
@@ -124,7 +109,7 @@ export const ResultsPanel: React.FC = () => {
                   <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                   <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                 </svg>
-                Searching multiple sources...
+                {statusMessage}
               </div>
             )}
           </div>
@@ -147,135 +132,26 @@ export const ResultsPanel: React.FC = () => {
         </div>
         
         <div className="space-y-6">
-          {availableSources.map(source => {
-            const sourceResults = getSourceResults(source);
-            const status = getSourceStatus(source);
-            const isExpanded = expandedSources[source] ?? true;
-            
-            if (sourceResults.length === 0 && status.status === 'complete' && !streaming) {
-              return null;
-            }
-            
-            return (
-              <div key={source} className="border rounded-lg overflow-hidden">
-                <div 
-                  className="flex justify-between items-center px-4 py-3 bg-gray-50 cursor-pointer"
-                  onClick={() => toggleSource(source)}
-                >
-                  <div className="flex items-center">
-                    <h3 className="font-medium text-gray-800">{source}</h3>
-                    <span className="ml-2 text-sm text-gray-500">
-                      ({sourceResults.length} results)
-                    </span>
-                    
-                    {streaming && status.status !== 'complete' && (
-                      <div className="flex items-center ml-3 text-sm text-blue-600">
-                        <svg className="animate-spin -ml-1 mr-2 h-3 w-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                        </svg>
-                        {status.message || 'Searching...'}
-                      </div>
-                    )}
-                    
-                    {status.status === 'complete' && (
-                      <span className="ml-3 text-sm text-green-600">Complete</span>
-                    )}
-                    
-                    {status.status === 'error' && (
-                      <div className="flex items-center ml-3 text-sm text-red-600">
-                        <AlertCircle className="h-3 w-3 mr-1" />
-                        {status.message || 'Error occurred'}
-                      </div>
-                    )}
-                  </div>
-                  
-                  {isExpanded ? (
-                    <ChevronUp className="h-5 w-5 text-gray-500" />
-                  ) : (
-                    <ChevronDown className="h-5 w-5 text-gray-500" />
-                  )}
-                </div>
-                
-                {isExpanded && (
-                  <div className="overflow-x-auto">
-                    {sourceResults.length > 0 ? (
-                      <table className="min-w-full divide-y divide-gray-200">
-                        <thead className="bg-gray-50">
-                          <tr>
-                            <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                              Address
-                            </th>
-                            <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                              Phone Number
-                            </th>
-                            <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                              Actions
-                            </th>
-                          </tr>
-                        </thead>
-                        <tbody className="bg-white divide-y divide-gray-200">
-                          {sourceResults.map((location, index) => (
-                            <tr key={`${source}-${index}`} className={`hover:bg-gray-50 transition-colors ${
-                              index === sourceResults.length - 1 && streaming && status.status !== 'complete' 
-                                ? "animate-pulse bg-blue-50" 
-                                : ""
-                            }`}>
-                              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                                {location.address}
-                              </td>
-                              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                                {location.phoneNumber}
-                              </td>
-                              <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                                <button
-                                  onClick={() => copyToClipboard(`${location.address} - ${location.phoneNumber}`, index)}
-                                  className="text-blue-600 hover:text-blue-900 flex items-center transition-colors"
-                                >
-                                  {copiedIndex === index ? (
-                                    <>
-                                      <CheckCircle className="h-4 w-4 mr-1 text-green-500" />
-                                      <span className="text-green-500">Copied</span>
-                                    </>
-                                  ) : (
-                                    <>
-                                      <Clipboard className="h-4 w-4 mr-1" />
-                                      Copy
-                                    </>
-                                  )}
-                                </button>
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    ) : (
-                      <div className="px-6 py-4 text-center text-sm text-gray-500">
-                        {streaming && status.status !== 'complete' ? (
-                          <div className="animate-pulse">{status.message || 'Searching for locations...'}</div>
-                        ) : status.status === 'error' ? (
-                          <div className="text-red-500">{status.message || 'Error finding locations'}</div>
-                        ) : (
-                          <div>No locations found</div>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-            );
-          })}
-          
-          {/* Summary Table - Show after streaming is complete */}
-          {!streaming && results.length > 0 && (
-            <div className="mt-8 border-t pt-6">
-              <div className="flex items-center mb-4">
-                <h3 className="text-lg font-semibold text-gray-800">Verified Locations Summary</h3>
+          {/* Single dynamic table that shows during streaming and after completion */}
+          <div>
+            <div className="flex items-center mb-4">
+              <h3 className="text-lg font-semibold text-gray-800">Franchise Locations</h3>
+              {streaming ? (
+                <span className="ml-2 px-2 py-1 bg-blue-100 text-blue-800 text-xs font-medium rounded flex items-center">
+                  <svg className="animate-spin -ml-0.5 mr-1.5 h-3 w-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                  Search in progress
+                </span>
+              ) : (
                 <span className="ml-2 px-2 py-1 bg-green-100 text-green-800 text-xs font-medium rounded">
                   Search Complete
                 </span>
-              </div>
-              
+              )}
+            </div>
+            
+            {results.length > 0 ? (
               <div className="overflow-x-auto shadow rounded-lg">
                 <table className="min-w-full divide-y divide-gray-200">
                   <thead className="bg-gray-50">
@@ -287,7 +163,7 @@ export const ResultsPanel: React.FC = () => {
                         Phone Number
                       </th>
                       <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Verified By
+                        Source
                       </th>
                       <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                         Actions
@@ -296,7 +172,10 @@ export const ResultsPanel: React.FC = () => {
                   </thead>
                   <tbody className="bg-white divide-y divide-gray-200">
                     {results.map((location, index) => (
-                      <tr key={`summary-${index}`} className="hover:bg-gray-50 transition-colors">
+                      <tr 
+                        key={`location-${index}`} 
+                        className="hover:bg-gray-50"
+                      >
                         <td className="px-6 py-4 text-sm text-gray-900">
                           {location.address}
                         </td>
@@ -332,8 +211,15 @@ export const ResultsPanel: React.FC = () => {
                   </tbody>
                 </table>
               </div>
-            </div>
-          )}
+            ) : (
+              <div className="p-8 text-center border rounded-lg">
+                <div className="animate-pulse">
+                  <Search className="h-10 w-10 mx-auto text-blue-500 mb-4" />
+                  <p className="text-gray-500">Searching for locations...</p>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </div>

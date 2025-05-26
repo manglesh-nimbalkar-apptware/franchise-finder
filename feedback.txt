@@ -1,0 +1,4 @@
+1. Optimize according to the chatgpt output
+2. Check for best API to use
+3. Master table should be dynamic
+4. Prompt engineering

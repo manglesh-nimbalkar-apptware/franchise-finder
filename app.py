@@ -4,6 +4,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from typing import List, Optional
 from langchain_openai import ChatOpenAI
+from langchain_google_genai import ChatGoogleGenerativeAI
 from browser_use import Agent, Controller, BrowserConfig, Browser
 from dotenv import load_dotenv
 import os
@@ -12,7 +13,8 @@ import re
 import asyncio
 
 load_dotenv()
-os.environ["OPENAI_API_KEY"] = os.getenv("OPENAI_API_KEY")
+os.environ["OPENAI_API_KEY"] = os.getenv("OPENAI_API_KEY", '')
+gemini_api_key = os.getenv('GOOGLE_API_KEY', '')
 
 app = FastAPI()
 
@@ -41,9 +43,15 @@ class Locations(BaseModel):
 planner_llm = ChatOpenAI(model='o4-mini')
 
 browser_config = BrowserConfig(
-    headless=True, 
-    disable_security=True
+    headless=False, 
+    disable_security=True,
+
+    # browser_binary_path='C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe',
+    # browser_binary_path="C:\Program Files\Google\Chrome\Application\chrome.exe",
 )
+
+google_maps_browser = Browser(config=browser_config)
+official_website_browser = Browser(config=browser_config)
 
 async def stream_franchise_details(franchise_name: str, country: str, state: str, city: str):
     shared_locations = set()
@@ -126,11 +134,11 @@ async def stream_franchise_details(franchise_name: str, country: str, state: str
             try:
                 return Agent(
                     task=task,
-                    llm=ChatOpenAI(model="gpt-4o"),
+                    llm=ChatGoogleGenerativeAI(model="gemini-2.0-flash-lite", api_key=gemini_api_key),
                     initial_actions=[{'open_tab': {'url': url}}],
-                    use_vision=True,
+                    use_vision=False,
                     enable_memory=False,
-                    # planner_llm=planner_llm,
+                    # planner_llm=ChatGoogleGenerativeAI(model="gemini-2.0-flash", api_key=gemini_api_key),
                     # planner_interval=4,
                     # controller_kwargs={"browser_id": f"{source_name}_{franchise_name}_{city}"},
                     browser=browser,
@@ -147,7 +155,7 @@ async def stream_franchise_details(franchise_name: str, country: str, state: str
             ),
             url=f'https://www.google.com/maps/search/{franchise_name}+{city}+{state}+{country}',
             source_name="Google Maps",
-            browser=Browser(config=browser_config)
+            browser=google_maps_browser,
         )
         
         official_website_agent = create_agent(
@@ -155,10 +163,11 @@ async def stream_franchise_details(franchise_name: str, country: str, state: str
                 f"Find {franchise_name} locations in {state}, {country} by visiting the official website only. "
                 f"For each location, extract the exact address and phone number."
                 f"Return each location in JSON format: {{\"address\": \"<address>\", \"phone\": \"<phone>\", \"source\": \"Official Website\"}}"
+                f"Do not stop until and unless you have completely verified that no more locations from the official website can be found."
             ),
             url=f"https://www.bing.com/search?q={franchise_name}+official+website+{city}+{state}+{country}",
             source_name="Official Website",
-            browser=Browser(config=browser_config)
+            browser=official_website_browser,
         )
         
         tasks = [
