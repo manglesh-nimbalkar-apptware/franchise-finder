@@ -1,12 +1,12 @@
 import React, { createContext, useContext, useState, useCallback, useRef } from 'react';
-import { FranchiseQuery, FranchiseLocation, SearchHistoryItem, SourceProgress, SourcedLocation } from '../types';
-import { fetchFranchiseDetails, streamFranchiseDetails } from '../services/franchiseService';
+import { FranchiseQuery, FranchiseLocation, SearchHistoryItem, SourceProgress, SourcedLocation, MergedLocation } from '../types';
+import { fetchFranchiseDetails, streamFranchiseDetailsWithMerging } from '../services/franchiseService';
 import { v4 as uuidv4 } from '../utils/uuid';
 
 interface FranchiseContextType {
   query: FranchiseQuery;
   setQuery: React.Dispatch<React.SetStateAction<FranchiseQuery>>;
-  results: SourcedLocation[];
+  results: MergedLocation[];
   sourceProgress: SourceProgress[];
   loading: boolean;
   streaming: boolean;
@@ -17,7 +17,7 @@ interface FranchiseContextType {
   clearResults: () => void;
   loadFromHistory: (item: SearchHistoryItem) => void;
   clearHistory: () => void;
-  getSourceResults: (source: string) => SourcedLocation[];
+  getSourceResults: (source: string) => MergedLocation[];
 }
 
 const defaultQuery: FranchiseQuery = {
@@ -31,7 +31,7 @@ const FranchiseContext = createContext<FranchiseContextType | undefined>(undefin
 
 export const FranchiseProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [query, setQuery] = useState<FranchiseQuery>(defaultQuery);
-  const [results, setResults] = useState<SourcedLocation[]>([]);
+  const [results, setResults] = useState<MergedLocation[]>([]);
   const [sourceProgress, setSourceProgress] = useState<SourceProgress[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
   const [streaming, setStreaming] = useState<boolean>(false);
@@ -43,7 +43,7 @@ export const FranchiseProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
   // Get results for a specific source
   const getSourceResults = useCallback((source: string) => {
-    return results.filter(location => location.source === source);
+    return results.filter(location => location.sources.includes(source));
   }, [results]);
 
   const handleSearch = useCallback(async () => {
@@ -57,7 +57,13 @@ export const FranchiseProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     
     try {
       const data = await fetchFranchiseDetails(query);
-      setResults(data.map(location => ({ ...location, source: 'Default' })));
+      // Convert FranchiseLocation[] to MergedLocation[]
+      const mergedData: MergedLocation[] = data.map(location => ({
+        address: location.address,
+        phoneNumber: location.phoneNumber,
+        sources: [location.source || 'Default']
+      }));
+      setResults(mergedData);
       
       // Add to search history
       const historyItem: SearchHistoryItem = {
@@ -104,12 +110,12 @@ export const FranchiseProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     
     setSearchHistory(prev => [historyItem, ...prev.slice(0, 9)]);
     
-    // Start streaming
-    const cancelStream = streamFranchiseDetails(
+    // Start streaming with AI merging
+    const cancelStream = streamFranchiseDetailsWithMerging(
       query,
-      // Handle new location
-      (location) => {
-        setResults(prev => [...prev, location]);
+      // Handle merged location updates
+      (mergedLocations) => {
+        setResults(mergedLocations);
       },
       // Handle completion
       () => {

@@ -54,3 +54,9 @@ export interface StreamingEvent {
   data?: LocationDetails;
   error?: string;
 }
+
+export interface MergedLocation {
+  address: string;
+  phoneNumber: string;
+  sources: string[];
+}

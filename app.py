@@ -50,8 +50,23 @@ browser_config = BrowserConfig(
     # browser_binary_path="C:\Program Files\Google\Chrome\Application\chrome.exe",
 )
 
+# yelp_browser_config = BrowserConfig(
+#     headless=False, 
+#     disable_security=True,
+#     browser_binary_path=r'C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe',
+# )
+
+# random_browser_config = BrowserConfig(
+#     headless=False, 
+#     disable_security=True,
+#     browser_binary_path=r"C:\Program Files\Google\Chrome\Application\chrome.exe",
+# )
+
 google_maps_browser = Browser(config=browser_config)
 official_website_browser = Browser(config=browser_config)
+yelp_browser = Browser(config=browser_config)
+yellowpages_browser = Browser(config=browser_config)
+random_website_browser = Browser(config=browser_config)
 
 async def stream_franchise_details(franchise_name: str, country: str, state: str, city: str):
     shared_locations = set()
@@ -62,7 +77,7 @@ async def stream_franchise_details(franchise_name: str, country: str, state: str
         
         result_queue = asyncio.Queue()
         
-        async def process_agent_results(agent, source_name, queue):
+        async def process_agent_results(agent, source_name, queue, max_steps=10):
             nonlocal active_agents
             
             await queue.put(f"data: {json.dumps({'status': 'progress', 'source': source_name, 'message': f'Searching {source_name}...'})}\n\n")
@@ -74,7 +89,7 @@ async def stream_franchise_details(franchise_name: str, country: str, state: str
                 controller = Controller(output_model=Locations)
                 agent.controller = controller
                 
-                result = await agent.run(max_steps=10)
+                result = await agent.run(max_steps=max_steps)
                 
                 final_data = result.final_result()
                 print(f"Final data from {source_name}: {final_data}")
@@ -89,13 +104,13 @@ async def stream_franchise_details(franchise_name: str, country: str, state: str
                                     location = {
                                         "Address": loc.get("address", ""),
                                         "Phone": loc.get("phone", ""),
-                                        "Source": loc.get("source", source_name)
+                                        "Source": loc.get("source", "")
                                     }
                                     
                                     loc_id = f"{location['Address']}|{location['Phone']}"
                                     if loc_id not in shared_locations:
                                         shared_locations.add(loc_id)
-                                        await queue.put(f"data: {json.dumps({'location': location, 'source': source_name})}\n\n")
+                                        await queue.put(f"data: {json.dumps({'location': location, 'source': location['Source']})}\n\n")
                         else:
                             locations = []
                             for line in final_data.split("\n"):
@@ -111,7 +126,7 @@ async def stream_franchise_details(franchise_name: str, country: str, state: str
                                         loc_id = f"{location['Address']}|{location['Phone']}"
                                         if loc_id not in shared_locations:
                                             shared_locations.add(loc_id)
-                                            await queue.put(f"data: {json.dumps({'location': location, 'source': source_name})}\n\n")
+                                            await queue.put(f"data: {json.dumps({'location': location, 'source': location['Source']})}\n\n")
                                     except:
                                         pass
                     except Exception as e:
@@ -134,9 +149,11 @@ async def stream_franchise_details(franchise_name: str, country: str, state: str
             try:
                 return Agent(
                     task=task,
-                    llm=ChatGoogleGenerativeAI(model="gemini-2.0-flash-lite", api_key=gemini_api_key),
+                    # llm=ChatGoogleGenerativeAI(model="gemini-2.5-flash-preview-05-20", api_key=gemini_api_key),
+                    # models = ["gemini-2.5-flash-preview-05-20", "gemini-2.0-flash", "gemini-2.0-flash-lite", ]
+                    llm=ChatGoogleGenerativeAI(model="gemma-3-27b-it", api_key=gemini_api_key),
                     initial_actions=[{'open_tab': {'url': url}}],
-                    use_vision=False,
+                    use_vision=True,
                     enable_memory=False,
                     # planner_llm=ChatGoogleGenerativeAI(model="gemini-2.0-flash", api_key=gemini_api_key),
                     # planner_interval=4,
@@ -169,10 +186,66 @@ async def stream_franchise_details(franchise_name: str, country: str, state: str
             source_name="Official Website",
             browser=official_website_browser,
         )
+
+        yelp_website_agent = create_agent(
+            task=(
+                f"Find {franchise_name} locations in {city}, {state}, {country} on Yelp. "
+                f"If you encounter a CAPTCHA, try to skip it or find an alternative way to access the data. "
+                f"For each location, extract the exact address and phone number. "
+                f"Return the data in this exact format: "
+                f'{{\"locations\": [{{\"address\": \"complete address\", \"phone\": \"phone number\", \"source\": \"Yelp\"}}]}}'
+                f"Make sure to include the 'locations' key with a list of location objects. "
+                f"If no locations found due to CAPTCHA or other issues, return: {{\"locations\": []}}"
+            ),
+            url=f"https://www.yelp.com/search?find_desc={franchise_name}&find_loc={city}+{state}+{country}",
+            source_name="Yelp",
+            browser=yelp_browser,
+        )
+
+        yellowpages_website_agent = create_agent(
+            task=(
+                f"Find {franchise_name} locations in {city}, {state}, {country} on Yellow Pages. "
+                f"For each location, extract the exact address and phone number. "
+                f"Return the data in this exact format: "
+                f'{{\"locations\": [{{\"address\": \"complete address\", \"phone\": \"phone number\", \"source\": \"Yellow Pages\"}}]}}'
+                f"Make sure to include the 'locations' key with a list of location objects."
+            ),
+            url=f"https://www.yellowpages.com/search?search_terms={franchise_name}&geo_location_terms={city}+{state}+{country}",
+            source_name="Yellow Pages",
+            browser=yellowpages_browser,
+        )
+
+        random_website_agent = create_agent(
+            task=(
+                f"Find {franchise_name} locations in {city}, {state}, {country} using alternative websites. "
+                f"IMPORTANT: Avoid Google Maps, Yelp, Yellow Pages, and the official {franchise_name} website (URLs containing '{franchise_name}'). "
+                f"For each location found, extract: "
+                f"1. Complete street address "
+                f"2. Phone number (use 'N/A' if not available) "
+                f"3. Name of the website where you found the information "
+                f"Return results in exactly this JSON format: "
+                f'{{\"locations\": [{{\"address\": \"complete address\", \"phone\": \"phone number\", \"source\": \"website name\"}}]}}'
+                f"CRITICAL: The 'source' field MUST be a proper, readable website name WITHOUT domains or URLs. "
+                f"Examples: "
+                f"- For 'tripadvisor.com' → use 'Trip Advisor' "
+                f"- For 'locations.noodles.com' → use 'Noodles & Company' "
+                f"- For 'restaurantji.com' → use 'Restaurant Ji' "
+                f"Always convert domain names to proper business names by removing '.com', '.org', etc. and using proper spacing and capitalization."
+                f"Visit only one website at a time. Do not click on multiple websites simultaneously."
+                f"Return results from atlest 2-3 websites."
+            ),
+            url=f"https://www.bing.com/search?q={franchise_name}+locations+in+{city}+{state}+{country}",
+            source_name="Other Websites",
+            browser=random_website_browser,
+        )
+
         
         tasks = [
-            *([asyncio.create_task(process_agent_results(google_maps_agent, "Google Maps", result_queue))] if google_maps_agent else []),
-            *([asyncio.create_task(process_agent_results(official_website_agent, "Official Website", result_queue))] if official_website_agent else [])
+            *([asyncio.create_task(process_agent_results(google_maps_agent, "Google Maps", result_queue, max_steps=10))] if google_maps_agent else []),
+            *([asyncio.create_task(process_agent_results(official_website_agent, "Official Website", result_queue, max_steps=10))] if official_website_agent else []),
+            *([asyncio.create_task(process_agent_results(yelp_website_agent, "Yelp", result_queue, max_steps=10))] if yelp_website_agent else []),
+            *([asyncio.create_task(process_agent_results(yellowpages_website_agent, "Yellow Pages", result_queue, max_steps=10))] if yellowpages_website_agent else []),
+            *([asyncio.create_task(process_agent_results(random_website_agent, "Other Websites", result_queue, max_steps=25))] if random_website_agent else []),
         ]
         
         # Set the initial count of active agents

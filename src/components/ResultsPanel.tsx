@@ -1,10 +1,74 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useFranchise } from '../context/FranchiseContext';
 import { Clipboard, CheckCircle, Download, X, Search, CheckSquare } from 'lucide-react';
+
+// Predefined source colors
+const predefinedSourceColors = {
+  'Google Maps': 'bg-blue-100 text-blue-800',
+  'Official Website': 'bg-green-100 text-green-800',
+  'Yelp': 'bg-red-100 text-red-800',
+  'Yellow Pages': 'bg-yellow-100 text-yellow-800',
+  'Default': 'bg-gray-100 text-gray-800',
+};
+
+// Collection of color pairs for random assignment
+const randomColorOptions = [
+  'bg-purple-100 text-purple-800',
+  'bg-pink-100 text-pink-800',
+  'bg-indigo-100 text-indigo-800',
+  'bg-teal-100 text-teal-800',
+  'bg-cyan-100 text-cyan-800',
+  'bg-lime-100 text-lime-800',
+  'bg-amber-100 text-amber-800',
+  'bg-orange-100 text-orange-800',
+  'bg-rose-100 text-rose-800',
+  'bg-fuchsia-100 text-fuchsia-800',
+  'bg-emerald-100 text-emerald-800',
+  'bg-sky-100 text-sky-800',
+];
 
 export const ResultsPanel: React.FC = () => {
   const { results, sourceProgress, loading, streaming, error, query, clearResults } = useFranchise();
   const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
+  
+  // Create a map of source names to colors, randomly assigning colors to unknown sources
+  const sourceColorMap = useMemo(() => {
+    const colorMap = new Map<string, string>();
+    const usedRandomColors = new Set<string>();
+    
+    // Function to get a random color that hasn't been used yet
+    const getRandomColor = () => {
+      const availableColors = randomColorOptions.filter(color => !usedRandomColors.has(color));
+      if (availableColors.length === 0) {
+        // If all colors used, start reusing them
+        return randomColorOptions[Math.floor(Math.random() * randomColorOptions.length)];
+      }
+      const color = availableColors[Math.floor(Math.random() * availableColors.length)];
+      usedRandomColors.add(color);
+      return color;
+    };
+    
+    // Collect all unique sources from results
+    const uniqueSources = new Set<string>();
+    results.forEach(result => {
+      result.sources.forEach(source => uniqueSources.add(source));
+    });
+    
+    // Assign colors to each source
+    uniqueSources.forEach(source => {
+      if (predefinedSourceColors[source]) {
+        colorMap.set(source, predefinedSourceColors[source]);
+      } else {
+        colorMap.set(source, getRandomColor());
+      }
+    });
+    
+    return colorMap;
+  }, [results]);
+  
+  const getSourceColor = (source: string) => {
+    return sourceColorMap.get(source) || predefinedSourceColors['Default'];
+  };
   
   const copyToClipboard = (text: string, index: number) => {
     navigator.clipboard.writeText(text).then(() => {
@@ -14,11 +78,11 @@ export const ResultsPanel: React.FC = () => {
   };
 
   const downloadCSV = () => {
-    const headers = ['Address', 'Phone Number', 'Source'];
+    const headers = ['Address', 'Phone Number', 'Sources'];
     const csvContent = [
       headers.join(','),
-      ...results.map(({ address, phoneNumber, source }) => 
-        `"${address.replace(/"/g, '""')}","${phoneNumber.replace(/"/g, '""')}","${source.replace(/"/g, '""')}"`
+      ...results.map(({ address, phoneNumber, sources }) => 
+        `"${address.replace(/"/g, '""')}","${phoneNumber.replace(/"/g, '""')}","${sources.join(', ').replace(/"/g, '""')}"`
       )
     ].join('\n');
     
@@ -132,7 +196,6 @@ export const ResultsPanel: React.FC = () => {
         </div>
         
         <div className="space-y-6">
-          {/* Single dynamic table that shows during streaming and after completion */}
           <div>
             <div className="flex items-center mb-4">
               <h3 className="text-lg font-semibold text-gray-800">Franchise Locations</h3>
@@ -163,7 +226,7 @@ export const ResultsPanel: React.FC = () => {
                         Phone Number
                       </th>
                       <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Source
+                        Sources
                       </th>
                       <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                         Actions
@@ -183,10 +246,19 @@ export const ResultsPanel: React.FC = () => {
                           {location.phoneNumber}
                         </td>
                         <td className="px-6 py-4 text-sm text-gray-900">
-                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                            <CheckSquare className="h-3 w-3 mr-1" />
-                            {location.source}
-                          </span>
+                          <div className="flex flex-wrap gap-1">
+                            {location.sources.map((source, sourceIndex) => (
+                              <span 
+                                key={`${index}-${sourceIndex}`}
+                                className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                                  getSourceColor(source)
+                                }`}
+                              >
+                                <CheckSquare className="h-3 w-3 mr-1" />
+                                {source}
+                              </span>
+                            ))}
+                          </div>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                           <button
