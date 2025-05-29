@@ -1,5 +1,6 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { MergedLocation, SourcedLocation } from '../types';
+import { formatPhoneNumber } from '../utils/phoneFormatter';
 
 const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY || '';
 
@@ -36,6 +37,7 @@ Rules:
 3. Consider addresses as duplicates if they refer to the same physical location (ignore minor formatting differences)
 4. Always preserve all existing sources when merging and avoid duplicate sources
 5. Return the complete updated table
+6. Always format phone numbers as "+1 XXX-XXX-XXXX" format (US phone numbers)
 
 Master Table:
 ${JSON.stringify(masterTable, null, 2)}
@@ -47,7 +49,7 @@ Return only a JSON array with this structure:
 [
   {
     "address": "complete address",
-    "phoneNumber": "phone or N/A",
+    "phoneNumber": "phone in +1 XXX-XXX-XXXX format or N/A",
     "sources": ["source1", "source2"]
   }
 ]
@@ -68,6 +70,7 @@ Return only a JSON array with this structure:
     // Ensure no duplicate sources in the response
     return parsedResponse.map((location: MergedLocation) => ({
       ...location,
+      phoneNumber: formatPhoneNumber(location.phoneNumber),
       sources: [...new Set(location.sources)]
     }));
     
@@ -110,6 +113,7 @@ Rules:
 4. Consider addresses as duplicates if they refer to the same physical location (ignore minor formatting differences)
 5. Always preserve all existing sources when merging
 6. Process all new results together to avoid duplicate entries
+7. Always format phone numbers as "+1 XXX-XXX-XXXX" format (US phone numbers)
 
 Master Table:
 ${JSON.stringify(masterTable, null, 2)}
@@ -122,7 +126,7 @@ Return only a JSON object with this structure:
   "updatedTable": [
     {
       "address": "complete address",
-      "phoneNumber": "phone or N/A",
+      "phoneNumber": "phone in +1 XXX-XXX-XXXX format or N/A",
       "sources": ["source1", "source2"]
     }
   ],
@@ -146,7 +150,11 @@ Return only a JSON object with this structure:
     
     const parsedResponse = JSON.parse(jsonMatch[0]);
     console.log('Gemini batch merge summary:', parsedResponse.summary);
-    return parsedResponse.updatedTable;
+    return parsedResponse.updatedTable.map((location: MergedLocation) => ({
+      ...location,
+      phoneNumber: formatPhoneNumber(location.phoneNumber),
+      sources: [...new Set(location.sources)]
+    }));
     
   } catch (error) {
     console.error('Error in Gemini batch comparison:', error);
@@ -169,7 +177,7 @@ const fallbackMerge = (masterTable: MergedLocation[], newResult: SourcedLocation
     
     updatedTable[existingIndex] = {
       address: newResult.address.length > existing.address.length ? newResult.address : existing.address,
-      phoneNumber: newResult.phoneNumber !== 'N/A' ? newResult.phoneNumber : existing.phoneNumber,
+      phoneNumber: formatPhoneNumber(newResult.phoneNumber !== 'N/A' ? newResult.phoneNumber : existing.phoneNumber),
       sources: [...existing.sources, newResult.source].filter((source, index, arr) => 
         arr.indexOf(source) === index
       )
@@ -182,7 +190,7 @@ const fallbackMerge = (masterTable: MergedLocation[], newResult: SourcedLocation
       ...masterTable,
       {
         address: newResult.address,
-        phoneNumber: newResult.phoneNumber,
+        phoneNumber: formatPhoneNumber(newResult.phoneNumber),
         sources: [newResult.source]
       }
     ];
@@ -204,7 +212,7 @@ const fallbackBatchMerge = (masterTable: MergedLocation[], newResults: SourcedLo
       const existing = updatedTable[existingIndex];
       updatedTable[existingIndex] = {
         address: newResult.address.length > existing.address.length ? newResult.address : existing.address,
-        phoneNumber: newResult.phoneNumber !== 'N/A' ? newResult.phoneNumber : existing.phoneNumber,
+        phoneNumber: formatPhoneNumber(newResult.phoneNumber !== 'N/A' ? newResult.phoneNumber : existing.phoneNumber),
         sources: [...existing.sources, newResult.source].filter((source, index, arr) => 
           arr.indexOf(source) === index
         )
@@ -213,7 +221,7 @@ const fallbackBatchMerge = (masterTable: MergedLocation[], newResults: SourcedLo
       // Add as new location
       updatedTable.push({
         address: newResult.address,
-        phoneNumber: newResult.phoneNumber,
+        phoneNumber: formatPhoneNumber(newResult.phoneNumber),
         sources: [newResult.source]
       });
     }

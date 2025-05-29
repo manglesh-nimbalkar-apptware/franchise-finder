@@ -1,5 +1,6 @@
 import { FranchiseQuery, FranchiseResponse, FranchiseLocation, LocationDetails, SourceProgress, SourcedLocation, MergedLocation } from '../types';
 import { compareAndMergeLocations, compareAndMergeBatchLocations } from './geminiService';
+import { formatPhoneNumber } from '../utils/phoneFormatter';
 
 const API_URL = 'http://localhost:8000';
 
@@ -73,7 +74,7 @@ export const streamFranchiseDetails = (
                   onError(data.error);
                 } else if (data.location) {
                   const address = data.location.Address || data.location.address || '';
-                  const phoneNumber = data.location.Phone || data.location.phone || '';
+                  const phoneNumber = formatPhoneNumber(data.location.Phone || data.location.phone || '');
                   const source = data.source || data.location.Source || data.location.source || 'Unknown';
                   
                   const locationData: SourcedLocation = {
@@ -128,7 +129,7 @@ export const streamFranchiseDetails = (
               if (data.location) {
                 const locationData: SourcedLocation = {
                   address: data.location.Address || data.location.address || '',
-                  phoneNumber: data.location.Phone || data.location.phone || '',
+                  phoneNumber: formatPhoneNumber(data.location.Phone || data.location.phone || ''),
                   source: data.source || data.location.Source || data.location.source || 'Unknown',
                 };
                 
@@ -165,17 +166,23 @@ export const streamFranchiseDetailsWithMerging = (
   onLocationUpdate: (locations: MergedLocation[]) => void,
   onComplete: () => void,
   onError: (error: string) => void,
-  onSourceProgress?: (progress: SourceProgress) => void
+  onSourceProgress?: (progress: SourceProgress) => void,
+  initialMasterTable: MergedLocation[] = []
 ): () => void => {
-  console.log("Starting location streaming with AI batch merging:", query);
+  console.log("Starting location verification with AI batch merging:", query);
   
   let abortController: AbortController | null = new AbortController();
-  let masterTable: MergedLocation[] = [];
+  let masterTable: MergedLocation[] = [...initialMasterTable]; // Use initial table if provided
   
   // Collection of locations by source to process in batches
   const locationsBySource: Record<string, SourcedLocation[]> = {};
   // Track which sources have completed
   const completedSources: Set<string> = new Set();
+  
+  // Log initial state
+  if (initialMasterTable.length > 0) {
+    console.log(`Starting with ${initialMasterTable.length} locations from Google Places API as initial master table`);
+  }
   
   const fetchOptions = {
     method: 'POST',
@@ -192,19 +199,19 @@ export const streamFranchiseDetailsWithMerging = (
       return;
     }
     
-    console.log(`Processing batch of ${locationsBySource[source].length} locations from ${source}`);
+    console.log(`Verifying batch of ${locationsBySource[source].length} locations from ${source}`);
     
     try {
       // Send all locations from this source to Gemini at once
       masterTable = await compareAndMergeBatchLocations(masterTable, locationsBySource[source]);
-      console.log("Updated master table after batch merge:", masterTable);
+      console.log("Updated master table after batch verification:", masterTable);
       onLocationUpdate([...masterTable]);
       
       if (onSourceProgress) {
         onSourceProgress({
           source: source,
           status: 'complete',
-          message: `Processed ${locationsBySource[source].length} locations from ${source}`,
+          message: `Verified ${locationsBySource[source].length} locations from ${source}`,
           count: locationsBySource[source].length
         });
       }
@@ -213,13 +220,13 @@ export const streamFranchiseDetailsWithMerging = (
       delete locationsBySource[source];
       
     } catch (error) {
-      console.error(`Error in batch processing for ${source}:`, error);
+      console.error(`Error in batch verification for ${source}:`, error);
       
       if (onSourceProgress) {
         onSourceProgress({
           source: source,
           status: 'error',
-          message: `Error processing locations: ${error}`,
+          message: `Error verifying locations: ${error}`,
           count: locationsBySource[source].length
         });
       }
@@ -231,7 +238,7 @@ export const streamFranchiseDetailsWithMerging = (
         }
         onLocationUpdate([...masterTable]);
       } catch (fallbackError) {
-        console.error("Even fallback processing failed:", fallbackError);
+        console.error("Even fallback verification failed:", fallbackError);
       }
       
       // Clear processed locations
@@ -268,7 +275,7 @@ export const streamFranchiseDetailsWithMerging = (
               }
             }
             
-            console.log("Stream complete");
+            console.log("Verification complete");
             onComplete();
             return;
           }
@@ -310,7 +317,7 @@ export const streamFranchiseDetailsWithMerging = (
                     onSourceProgress({
                       source: data.source,
                       status: 'complete',
-                      message: data.message || 'Complete',
+                      message: (data.message || 'Complete').replace('Found', 'Verified'),
                       count: locationsBySource[data.source]?.length || 0
                     });
                   }
@@ -318,7 +325,7 @@ export const streamFranchiseDetailsWithMerging = (
                   onSourceProgress({
                     source: data.source,
                     status: data.status,
-                    message: data.message || '',
+                    message: (data.message || '').replace('Searching', 'Verifying').replace('Found', 'Verified'),
                     count: locationsBySource[data.source]?.length || 0
                   });
                 } else if (data.error) {
@@ -326,7 +333,7 @@ export const streamFranchiseDetailsWithMerging = (
                   onError(data.error);
                 } else if (data.location) {
                   const address = data.location.Address || data.location.address || '';
-                  const phoneNumber = data.location.Phone || data.location.phone || 'N/A';
+                  const phoneNumber = formatPhoneNumber(data.location.Phone || data.location.phone || 'N/A');
                   const source = data.source || data.location.Source || data.location.source || 'Unknown';
                   
                   if (address && address.trim().length > 0) {
@@ -347,7 +354,7 @@ export const streamFranchiseDetailsWithMerging = (
                       onSourceProgress({
                         source: source,
                         status: 'searching',
-                        message: `Found ${locationsBySource[source].length} locations from ${source}`,
+                        message: `Verifying ${locationsBySource[source].length} locations from ${source}`,
                         count: locationsBySource[source].length
                       });
                     }
@@ -386,7 +393,7 @@ export const streamFranchiseDetailsWithMerging = (
                 const source = data.source || data.location.Source || data.location.source || 'Unknown';
                 const newLocation: SourcedLocation = {
                   address: data.location.Address || data.location.address || '',
-                  phoneNumber: data.location.Phone || data.location.phone || 'N/A',
+                  phoneNumber: formatPhoneNumber(data.location.Phone || data.location.phone || 'N/A'),
                   source: source,
                 };
                 
@@ -477,6 +484,6 @@ const parseJsonData = (jsonData: any): FranchiseLocation[] => {
 
 const convertToFranchiseLocation = (location: LocationDetails): FranchiseLocation => ({
   address: location.Address || 'N/A',
-  phoneNumber: location.Phone || 'N/A',
+  phoneNumber: formatPhoneNumber(location.Phone) || 'N/A',
   source: location.Source || 'N/A',
 });

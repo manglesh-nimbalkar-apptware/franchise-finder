@@ -5,6 +5,7 @@ import { Clipboard, CheckCircle, Download, X, Search, CheckSquare } from 'lucide
 // Predefined source colors
 const predefinedSourceColors = {
   'Google Maps': 'bg-blue-100 text-blue-800',
+  'Google Places': 'bg-purple-100 text-purple-800', // Added specific color for Google Places
   'Official Website': 'bg-green-100 text-green-800',
   'Yelp': 'bg-red-100 text-red-800',
   'Yellow Pages': 'bg-yellow-100 text-yellow-800',
@@ -103,16 +104,19 @@ export const ResultsPanel: React.FC = () => {
     const totalSources = sourceProgress.length;
     
     if (completedSources === totalSources) {
-      return "Search complete";
+      return "Verification complete";
     }
     
+    // Only show sources that are actually still verifying (not complete or error)
+    // Also exclude Google Places if it's already complete
     const activeSources = sourceProgress
       .filter(s => s.status !== 'complete' && s.status !== 'error')
+      .filter(s => s.source !== 'Google Places') // Don't show "Verifying Google Places" if it's handled separately
       .map(s => s.source);
       
     if (activeSources.length === 0) return "Processing results...";
     
-    return `Searching ${activeSources.join(', ')}...`;
+    return `Verifying ${activeSources.join(', ')}...`;
   };
 
   if (loading && !streaming) {
@@ -205,11 +209,11 @@ export const ResultsPanel: React.FC = () => {
                     <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                     <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                   </svg>
-                  Search in progress
+                  Verification in progress
                 </span>
               ) : (
                 <span className="ml-2 px-2 py-1 bg-green-100 text-green-800 text-xs font-medium rounded">
-                  Search Complete
+                  Verification Complete
                 </span>
               )}
             </div>
@@ -287,7 +291,7 @@ export const ResultsPanel: React.FC = () => {
               <div className="p-8 text-center border rounded-lg">
                 <div className="animate-pulse">
                   <Search className="h-10 w-10 mx-auto text-blue-500 mb-4" />
-                  <p className="text-gray-500">Searching for locations...</p>
+                  <p className="text-gray-500">Verifying locations...</p>
                 </div>
               </div>
             )}
