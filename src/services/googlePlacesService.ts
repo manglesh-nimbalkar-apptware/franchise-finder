@@ -58,8 +58,22 @@ export const fetchGooglePlaces = async (
     console.log('Sending Google Places API request:', request);
 
     // Make the API request
-    // @ts-ignore - Type definitions may not be up to date
     const { places } = await Place.searchByText(request);
+
+    // const places = [
+    //   {
+    //     formattedAddress: '123 Main St, New York, NY 10001',
+    //     internationalPhoneNumber: '+12125550123',
+    //   },
+    //   {
+    //     formattedAddress: '456 Broadway Ave, New York, NY 10002',
+    //     internationalPhoneNumber: '+12125550124',
+    //   },
+    //   {
+    //     formattedAddress: '789 Park Road, New York, NY 10003',
+    //     internationalPhoneNumber: '+12125550125',
+    //   }
+    // ];
     
     console.log('Google Places API response:', places);
     

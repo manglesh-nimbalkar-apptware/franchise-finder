@@ -2,7 +2,7 @@ import { FranchiseQuery, FranchiseResponse, FranchiseLocation, LocationDetails, 
 import { compareAndMergeLocations, compareAndMergeBatchLocations } from './geminiService';
 import { formatPhoneNumber } from '../utils/phoneFormatter';
 
-const API_URL = 'http://localhost:8000';
+const API_URL = 'http://localhost:8080';
 
 export const streamFranchiseDetails = (
   query: FranchiseQuery,

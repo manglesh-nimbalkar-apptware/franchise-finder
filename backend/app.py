@@ -15,22 +15,22 @@ import asyncio
 
 load_dotenv()
 os.environ["OPENAI_API_KEY"] = os.getenv("OPENAI_API_KEY", '')
-gemini_api_key = os.getenv('GEMINI_API_KEY_1', '')
+# gemini_api_key = os.getenv('GEMINI_API_KEY_1', '')
 
-models = ["gemini-2.5-flash-preview-05-20", "gemini-2.0-flash", "gemini-2.0-flash-lite",]
-model = models[0]
-llms = {
-    "Google Maps": ChatGoogleGenerativeAI(model=model, api_key=os.getenv('GEMINI_API_KEY_1', gemini_api_key)),
-    "Official Website": ChatGoogleGenerativeAI(model=model, api_key=os.getenv('GEMINI_API_KEY_2', gemini_api_key)),
-    "Yelp": ChatGoogleGenerativeAI(model=model, api_key=os.getenv('GEMINI_API_KEY_3', gemini_api_key)),
-    "Yellow Pages": ChatGoogleGenerativeAI(model=model, api_key=os.getenv('GEMINI_API_KEY_4', gemini_api_key)),
-    "Other Websites": ChatGoogleGenerativeAI(model=model, api_key=os.getenv('GEMINI_API_KEY_5', gemini_api_key))
-}
+# models = ["gemini-2.5-flash-preview-05-20", "gemini-2.0-flash", "gemini-2.0-flash-lite",]
+# model = models[0]
+# llms = {
+#     "Google Maps": ChatGoogleGenerativeAI(model=model, api_key=os.getenv('GEMINI_API_KEY_1', gemini_api_key)),
+#     "Official Website": ChatGoogleGenerativeAI(model=model, api_key=os.getenv('GEMINI_API_KEY_2', gemini_api_key)),
+#     "Yelp": ChatGoogleGenerativeAI(model=model, api_key=os.getenv('GEMINI_API_KEY_3', gemini_api_key)),
+#     "Yellow Pages": ChatGoogleGenerativeAI(model=model, api_key=os.getenv('GEMINI_API_KEY_4', gemini_api_key)),
+#     "Other Websites": ChatGoogleGenerativeAI(model=model, api_key=os.getenv('GEMINI_API_KEY_5', gemini_api_key))
+# }
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup: Initialize resources (e.g., browser instances)
-    global Maps_browser, official_website_browser, yelp_browser, yellowpages_browser, random_website_browser
+    global google_maps_browser, official_website_browser, yelp_browser, yellowpages_browser, random_website_browser
     print("Application startup: Initializing browser instances...")
     try:
         google_maps_browser = None
@@ -91,7 +91,7 @@ planner_llm = ChatOpenAI(model='o4-mini')
 
 browser_config = BrowserConfig(
     headless=False, 
-    disable_security=True,
+    disable_security=False,
 
     # browser_binary_path='C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe',
     # browser_binary_path="C:\Program Files\Google\Chrome\Application\chrome.exe",
@@ -196,8 +196,8 @@ async def stream_franchise_details(franchise_name: str, country: str, state: str
             try:
                 return Agent(
                     task=task,
-                    llm=llms[source_name],
-                    # llm=ChatOpenAI(model="gpt-4.1-nano"),
+                    # llm=llms[source_name],
+                    llm=ChatOpenAI(model="gpt-4.1"),
                     initial_actions=[{'open_tab': {'url': url}}],
                     use_vision=True,
                     enable_memory=False,
@@ -206,66 +206,66 @@ async def stream_franchise_details(franchise_name: str, country: str, state: str
                     # controller_kwargs={"browser_id": f"{source_name}_{franchise_name}_{city}"},
                     # page_extraction_llm=ChatOpenAI(model="gpt-4.1-nano"),
                     browser=browser,
-                    extend_system_message=f"IMPORTANT: Avoid Google Maps, Yelp, Yellow Pages, and the official {franchise_name} website (URLs containing '{franchise_name}'). "
+                    # extend_system_message=f"IMPORTANT: Avoid Google Maps, Yelp, Yellow Pages, and the official {franchise_name} website (URLs containing '{franchise_name}'). "
                 )
             except Exception as e:
                 print(f"Error creating {source_name} agent: {str(e)}")
                 return None
 
-        # google_maps_agent = create_agent(
-        #     task=(
-        #         f"Find {franchise_name} locations in {city}, {state}, {country} using Google Maps only. The google maps tab is already opened for you you just need to search."
-        #         f"For each location, extract the exact address and phone number. Return all the different locations from the results in side pane. Do not deep dive any further."
-        #         f"Return each location in JSON format: {{\"address\": \"<address>\", \"phone\": \"<phone>\", \"source\": \"Google Maps\"}}"
-        #         f"Do not interact with the map just reterive the results which are shown in the sidebar."
-        #         f"If only single result is shown in the sidebar then modify the search query."
-        #     ),
-        #     url=f'https://www.google.com/maps/search/{franchise_name}+{city}+{state}+{country}',
-        #     source_name="Google Maps",
-        #     browser=google_maps_browser,
-        # )
+        google_maps_agent = create_agent(
+            task=(
+                f"Find {franchise_name} locations in {city}, {state}, {country} using Google Maps only. The google maps tab is already opened for you you just need to search."
+                f"For each location, extract the exact address and phone number. Return all the different locations from the results in side pane. Do not deep dive any further."
+                f"Return each location in JSON format: {{\"address\": \"<address>\", \"phone\": \"<phone>\", \"source\": \"Google Maps\"}}"
+                f"Do not interact with the map just reterive the results which are shown in the sidebar."
+                f"If only single result is shown in the sidebar then modify the search query."
+            ),
+            url=f'https://www.google.com/maps/search/{franchise_name}+{city}+{state}+{country}',
+            source_name="Google Maps",
+            browser=google_maps_browser,
+        )
         
-        # official_website_agent = create_agent(
-        #     task=(
-        #         f"Find {franchise_name} locations in {state}, {country} by visiting the official website only. "
-        #         f"For each location, extract the exact address and phone number."
-        #         f"Return each location in JSON format: {{\"address\": \"<address>\", \"phone\": \"<phone>\", \"source\": \"Official Website\"}}"
-        #         f"Do not stop until and unless you have completely verified that no more locations from the official website can be found."
-        #     ),
-        #     url=f"https://www.bing.com/search?q={franchise_name}+official+website+{city}+{state}+{country}",
-        #     source_name="Official Website",
-        #     browser=official_website_browser,
-        # )
+        official_website_agent = create_agent(
+            task=(
+                f"Find {franchise_name} locations in {state}, {country} by visiting the official website only. "
+                f"For each location, extract the exact address and phone number."
+                f"Return each location in JSON format: {{\"address\": \"<address>\", \"phone\": \"<phone>\", \"source\": \"Official Website\"}}"
+                f"Do not stop until and unless you have completely verified that no more locations from the official website can be found."
+            ),
+            url=f"https://www.bing.com/search?q={franchise_name}+official+website+{city}+{state}+{country}",
+            source_name="Official Website",
+            browser=official_website_browser,
+        )
 
-        # yelp_website_agent = create_agent(
-        #     task=(
-        #         f"Find {franchise_name} locations in {city}, {state}, {country} on Yelp. "
-        #         f"If you encounter a CAPTCHA, try to skip it or find an alternative way to access the data. "
-        #         f"For each location, extract the exact address and phone number. "
-        #         f"Return the data in this exact format: "
-        #         f'{{\"locations\": [{{\"address\": \"complete address\", \"phone\": \"phone number\", \"source\": \"Yelp\"}}]}}'
-        #         f"Make sure to include the 'locations' key with a list of location objects. "
-        #         f"IMPORTANT NOTE: Your task it to go to Yelp website only not any else. Do not reterive results from google search. Return only those which are on Yelp and are from {city}, {state}, {country}"
-        #         f"If no locations found due to CAPTCHA or other issues, return: {{\"locations\": []}}"
-        #     ),
-        #     url=f"https://www.yelp.com/search?find_desc={franchise_name}&find_loc={city}+{state}+{country}",
-        #     source_name="Yelp",
-        #     browser=yelp_browser,
-        # )
+        yelp_website_agent = create_agent(
+            task=(
+                f"Find {franchise_name} locations in {city}, {state}, {country} on Yelp. "
+                f"If you encounter a CAPTCHA, try to skip it or find an alternative way to access the data. "
+                f"For each location, extract the exact address and phone number. "
+                f"Return the data in this exact format: "
+                f'{{\"locations\": [{{\"address\": \"complete address\", \"phone\": \"phone number\", \"source\": \"Yelp\"}}]}}'
+                f"Make sure to include the 'locations' key with a list of location objects. "
+                f"IMPORTANT NOTE: Your task it to go to Yelp website only not any else. Do not reterive results from google search. Return only those which are on Yelp and are from {city}, {state}, {country}"
+                f"If no locations found due to CAPTCHA or other issues, return: {{\"locations\": []}}"
+            ),
+            url=f"https://www.yelp.com/search?find_desc={franchise_name}&find_loc={city}+{state}+{country}",
+            source_name="Yelp",
+            browser=yelp_browser,
+        )
 
-        # yellowpages_website_agent = create_agent(
-        #     task=(
-        #         f"Find {franchise_name} locations in {city}, {state}, {country} on Yellow Pages. "
-        #         f"For each location, extract the exact address and phone number. "
-        #         f"Return the data in this exact format: "
-        #         f'{{\"locations\": [{{\"address\": \"complete address\", \"phone\": \"phone number\", \"source\": \"Yellow Pages\"}}]}}'
-        #         f"Make sure to include the 'locations' key with a list of location objects."
-        #         f"IMPORTANT NOTE: Your task it to go to Yellow Pages website only not any else. Do not reterive results from google search. Return only those which are on Yellow Pages and are from {city}, {state}, {country}"
-        #     ),
-        #     url=f"https://www.yellowpages.com/search?search_terms={franchise_name}&geo_location_terms={city}+{state}+{country}",
-        #     source_name="Yellow Pages",
-        #     browser=yellowpages_browser,
-        # )
+        yellowpages_website_agent = create_agent(
+            task=(
+                f"Find {franchise_name} locations in {city}, {state}, {country} on Yellow Pages. "
+                f"For each location, extract the exact address and phone number. "
+                f"Return the data in this exact format: "
+                f'{{\"locations\": [{{\"address\": \"complete address\", \"phone\": \"phone number\", \"source\": \"Yellow Pages\"}}]}}'
+                f"Make sure to include the 'locations' key with a list of location objects."
+                f"IMPORTANT NOTE: Your task it to go to Yellow Pages website only not any else. Do not reterive results from google search. Return only those which are on Yellow Pages and are from {city}, {state}, {country}"
+            ),
+            url=f"https://www.yellowpages.com/search?search_terms={franchise_name}&geo_location_terms={city}+{state}+{country}",
+            source_name="Yellow Pages",
+            browser=yellowpages_browser,
+        )
 
         random_website_agent = create_agent(
             task=(
@@ -293,10 +293,10 @@ async def stream_franchise_details(franchise_name: str, country: str, state: str
 
         
         tasks = [
-            # *([asyncio.create_task(process_agent_results(google_maps_agent, "Google Maps", result_queue, max_steps=10))] if google_maps_agent else []),
-            # *([asyncio.create_task(process_agent_results(official_website_agent, "Official Website", result_queue, max_steps=10))] if official_website_agent else []),
-            # *([asyncio.create_task(process_agent_results(yelp_website_agent, "Yelp", result_queue, max_steps=10))] if yelp_website_agent else []),
-            # *([asyncio.create_task(process_agent_results(yellowpages_website_agent, "Yellow Pages", result_queue, max_steps=10))] if yellowpages_website_agent else []),
+            *([asyncio.create_task(process_agent_results(google_maps_agent, "Google Maps", result_queue, max_steps=10))] if google_maps_agent else []),
+            *([asyncio.create_task(process_agent_results(official_website_agent, "Official Website", result_queue, max_steps=15))] if official_website_agent else []),
+            *([asyncio.create_task(process_agent_results(yelp_website_agent, "Yelp", result_queue, max_steps=10))] if yelp_website_agent else []),
+            *([asyncio.create_task(process_agent_results(yellowpages_website_agent, "Yellow Pages", result_queue, max_steps=10))] if yellowpages_website_agent else []),
             *([asyncio.create_task(process_agent_results(random_website_agent, "Other Websites", result_queue, max_steps=25))] if random_website_agent else []),
         ]
         

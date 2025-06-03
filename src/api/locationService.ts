@@ -1,6 +1,6 @@
 import { QueryInput, QueryResponse } from '../types';
 
-const API_URL = 'http://localhost:8000';
+const API_URL = 'http://localhost:8080';
 
 export const fetchLocations = async (queryInput: QueryInput): Promise<QueryResponse> => {
   try {

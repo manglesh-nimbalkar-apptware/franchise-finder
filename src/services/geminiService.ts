@@ -22,7 +22,7 @@ export const compareAndMergeLocations = async (
   }
 
   try {
-    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+    const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
     
     const prompt = `
 You are a data comparison expert. I have a master table of franchise locations and a new location result from an agent. 
